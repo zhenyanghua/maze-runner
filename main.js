@@ -1,11 +1,13 @@
 const CELL_SIZE = 10;
 const GRID_WIDTH = 48;
 const GRID_HEIGHT = 48;
+const TEMPO = 10;
 const OFFSET = CELL_SIZE;
 
 const canvas = document.getElementById('canvas');
 const btnReset = document.getElementById('reset');
 const btnSolve = document.getElementById('solve');
+const btnAnimate = document.getElementById('animate');
 const ctx = canvas.getContext('2d');
 
 let walls;
@@ -17,6 +19,10 @@ btnReset.addEventListener('click', () => {
 
 btnSolve.addEventListener('click', () => {
     run();
+})
+
+btnAnimate.addEventListener('click', () => {
+    run(true)
 })
 
 // Generate a maze
@@ -38,21 +44,7 @@ function generateMaze() {
     return set;
 }
 
-function run() {
-    let winningNode = solve();
-    if (winningNode) {
-        const path = []
-        while (winningNode) {
-            path.push([winningNode.x, winningNode.y]);
-            winningNode = winningNode.parent;
-        }
-        drawCenterLine(path)
-    } else {
-        warn();
-    }
-}
-
-function solve() {
+async function solve(animate) {
     const visited = new Set();
     // solve the maze - BFS
     const queue = [];
@@ -77,6 +69,9 @@ function solve() {
     // a new node for the adjacent cell and add it to the queue.
     while(queue.length > 0) {
         const node = queue.shift();
+        if (animate) {
+            await drawNode(node);
+        }
         const {x, y, step, parentEdge} = node;
         // reach the last row and if bottom is open
         if (y === GRID_HEIGHT - 1 && !hasWall(x, y + 1, x + 1, y + 1)) {
@@ -149,6 +144,20 @@ function solve() {
 // when queue is empty, restart the program.
 }
 
+async function run(animate) {
+    let winningNode = await solve(animate);
+    if (winningNode) {
+        const path = []
+        while (winningNode) {
+            path.push([winningNode.x, winningNode.y]);
+            winningNode = winningNode.parent;
+        }
+        drawCenterLine(path)
+    } else {
+        warn();
+    }
+}
+
 function drawPoint(x, y) {
     ctx.beginPath();
     ctx.arc(OFFSET + x * CELL_SIZE, OFFSET + y * CELL_SIZE, 4, 0, Math.PI * 2);
@@ -177,6 +186,18 @@ function drawCenterLine(path) {
     ctx.strokeStyle = 'red';
     ctx.stroke();
     ctx.strokeStyle = 'black';
+}
+
+async function drawNode(node) {
+    ctx.beginPath()
+    ctx.rect(OFFSET + node.x * CELL_SIZE, OFFSET + node.y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+    ctx.fillStyle = 'rgba(0, 255, 255, 0.3)';
+    ctx.fill();
+    ctx.fillStyle = 'black';
+
+    return new Promise((resolve => {
+        setTimeout(resolve, TEMPO);
+    }));
 }
 
 function buildKey(x1, y1, x2, y2) {
