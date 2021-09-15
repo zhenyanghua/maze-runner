@@ -1,7 +1,10 @@
 const CELL_SIZE = 10;
 const GRID_WIDTH = 48;
 const GRID_HEIGHT = 48;
-const TEMPO = 10;
+const TEMPO = 20;
+const BACKGROUND = '#020c21';
+const FOREGROUND = '#FFFF96';
+const MAX_LAST_STEPS = 15;
 const OFFSET = CELL_SIZE;
 
 const canvas = document.getElementById('canvas');
@@ -11,6 +14,7 @@ const btnAnimate = document.getElementById('animate');
 const ctx = canvas.getContext('2d');
 
 let walls;
+let path = [];
 
 btnReset.addEventListener('click', () => {
     clear();
@@ -27,6 +31,7 @@ btnAnimate.addEventListener('click', () => {
 
 // Generate a maze
 function generateMaze() {
+    path = [];
     const set = new Set();
     for (let y = 0; y <= GRID_HEIGHT; y++) {
         for (let x = 0; x <= GRID_WIDTH; x++) {
@@ -45,7 +50,9 @@ function generateMaze() {
 }
 
 async function solve(animate) {
-    const visited = new Set();
+    clearAllNodes();
+    const visited = new Map();
+    let lastStep = 1;
     // solve the maze - BFS
     const queue = [];
     // 1. pretend there is a root node that is just one row above the first row,
@@ -67,14 +74,18 @@ async function solve(animate) {
     // to determine whether a node has any children, check the walls set to see if
     // three other sides have walls, for each side that doesn't have a wall, create
     // a new node for the adjacent cell and add it to the queue.
-    while(queue.length > 0) {
+    while (queue.length > 0) {
         const node = queue.shift();
         if (animate) {
-            await drawNode(node);
+            // when it gets to the next depth, redraw all nodes based on classification
+            if (lastStep < node.step) {
+                lastStep = await drawNodes(visited);
+            }
         }
         const {x, y, step, parentEdge} = node;
         // reach the last row and if bottom is open
         if (y === GRID_HEIGHT - 1 && !hasWall(x, y + 1, x + 1, y + 1)) {
+            clearNodes(visited);
             return node;
         }
         //top
@@ -131,13 +142,16 @@ async function solve(animate) {
         }
     }
 
+    clearNodes(visited);
+
     function createNodeIfNotVisited(node) {
         const key = `[${node.x}, ${node.y}]`;
         if (!visited.has(key)) {
-            visited.add(key);
+            visited.set(key, node);
             queue.push(node);
         }
     }
+
 // 3. this algo should stop whenever the first node that has reached the bottom
 // row, or when the queue is empty.
 // when bottom is reached, back track the path of the current node.
@@ -145,9 +159,10 @@ async function solve(animate) {
 }
 
 async function run(animate) {
+    clearPath(path);
     let winningNode = await solve(animate);
     if (winningNode) {
-        const path = []
+        path = [];
         while (winningNode) {
             path.push([winningNode.x, winningNode.y]);
             winningNode = winningNode.parent;
@@ -158,46 +173,86 @@ async function run(animate) {
     }
 }
 
-function drawPoint(x, y) {
-    ctx.beginPath();
-    ctx.arc(OFFSET + x * CELL_SIZE, OFFSET + y * CELL_SIZE, 4, 0, Math.PI * 2);
-    ctx.strokeStyle="pink";
-    ctx.stroke();
-    ctx.strokeStyle="black";
-}
-
 function drawLine(x1, y1, x2, y2) {
     ctx.beginPath();
     ctx.moveTo(OFFSET + x1 * CELL_SIZE, OFFSET + y1 * CELL_SIZE);
     ctx.lineTo(OFFSET + x2 * CELL_SIZE, OFFSET + y2 * CELL_SIZE);
+    ctx.strokeStyle = 'white';
     ctx.stroke();
 }
 
-function drawCenterLine(path) {
+function drawCenterLine(path, clear = false) {
     ctx.beginPath();
     for (let i = 0; i < path.length; i++) {
-        const point = [OFFSET + (path[i][0] + 1/2) * CELL_SIZE, OFFSET + (path[i][1] + 1/2) * CELL_SIZE];
+        const point = [OFFSET + (path[i][0] + 1 / 2) * CELL_SIZE, OFFSET + (path[i][1] + 1 / 2) * CELL_SIZE];
         if (i === 0) {
             ctx.moveTo(...point);
         } else {
             ctx.lineTo(...point);
         }
     }
-    ctx.strokeStyle = 'red';
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = clear ? BACKGROUND : FOREGROUND;
     ctx.stroke();
-    ctx.strokeStyle = 'black';
+    ctx.lineWidth = 1;
 }
 
-async function drawNode(node) {
-    ctx.beginPath()
-    ctx.rect(OFFSET + node.x * CELL_SIZE, OFFSET + node.y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
-    ctx.fillStyle = 'rgba(0, 255, 255, 0.3)';
-    ctx.fill();
-    ctx.fillStyle = 'black';
+/**
+ *
+ * @param nodes
+ * @return {Promise<*>} the current max step
+ */
+async function drawNodes(nodes) {
+    return new Promise(resolve => {
+        setTimeout(() => {
+            const maxStep = [...nodes.values()]
+                .map(node => node.step)
+                .reduce((prev, curr) => curr > prev ? curr : prev, 0);
+            // do the drawing here
+            nodes.forEach(node => {
+                drawNodeByStep(node, maxStep);
+            })
+            resolve(maxStep);
+        }, TEMPO);
+    });
+}
 
-    return new Promise((resolve => {
-        setTimeout(resolve, TEMPO);
-    }));
+function drawNodeByStep(node, maxStep) {
+    ctx.beginPath()
+    ctx.rect(OFFSET + node.x * CELL_SIZE + 2, OFFSET + node.y * CELL_SIZE + 2, CELL_SIZE - 4, CELL_SIZE - 4);
+    // clear
+    ctx.fillStyle = BACKGROUND;
+    ctx.fill();
+    // draw new - only color the last 5 steps.
+    ctx.fillStyle = maxStep - node.step < MAX_LAST_STEPS ? `rgba(255, 255, 150, ${1 - (maxStep - node.step) / MAX_LAST_STEPS})` : BACKGROUND;
+    ctx.fill();
+    ctx.fillStyle = 'white';
+}
+
+function clearNodes(nodes) {
+    nodes.forEach(clearNode);
+}
+
+function clearNode(node) {
+    ctx.beginPath()
+    ctx.rect(OFFSET + node.x * CELL_SIZE + 2, OFFSET + node.y * CELL_SIZE + 2, CELL_SIZE - 4, CELL_SIZE - 4);
+    // clear
+    ctx.fillStyle = BACKGROUND;
+    ctx.fill();
+    ctx.fillStyle = 'white';
+}
+
+// repaint all nodes but leave maze alone
+function clearAllNodes() {
+    for (let y = 0; y < GRID_HEIGHT - 1; y++) {
+        for (let x = 0; x < GRID_WIDTH - 1; x++) {
+            clearNode({x, y});
+        }
+    }
+}
+
+function clearPath(path) {
+    drawCenterLine(path, true);
 }
 
 function buildKey(x1, y1, x2, y2) {
@@ -226,5 +281,5 @@ function warn() {
     ctx.fillStyle = 'rgba(255, 0, 0, 0.2)';
     ctx.rect(0, 0, canvas.width, canvas.height);
     ctx.fill();
-    ctx.fillStyle = 'black';
+    ctx.fillStyle = 'white';
 }
