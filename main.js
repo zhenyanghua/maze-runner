@@ -197,11 +197,13 @@ async function doStepOver() {
             })
         }
     } else {
+        btnReset.disabled = true;
         await drawPathBackTrack(result.value);
         // dispose
         solver = undefined;
         timer = undefined;
         // restore UI state
+        btnReset.disabled = false;
         btnPause.hidden = true;
         btnResume.hidden = false;
     }
