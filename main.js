@@ -243,14 +243,16 @@ function pause() {
     }
 }
 
-function stepOver() {
+async function stepOver() {
     if (!solver) {
         clearPath(path);
         solver = doSolve(true);
     }
     // disallow step over when is not paused.
     if (!timer) {
-        doStepOver();
+        btnStep.disabled = true;
+        await doStepOver();
+        btnStep.disabled = false;
     }
 }
 
