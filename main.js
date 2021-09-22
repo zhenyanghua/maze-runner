@@ -21,6 +21,7 @@ let timer;
 let walls = generateMaze();
 
 btnReset.addEventListener('click', () => {
+    btnPause.click();
     clear();
     walls = generateMaze();
 });
@@ -186,7 +187,7 @@ function* doSolve(animate) {
  * and relay the generator state.
  * @returns if the generator is done.
  */
-function doStepOver() {
+async function doStepOver() {
     const result = solver.next();
     if (!result.done) {
         if (result.value) {
@@ -196,27 +197,36 @@ function doStepOver() {
             })
         }
     } else {
-        drawPathBackTrack(result.value);
+        await drawPathBackTrack(result.value);
         // dispose
         solver = undefined;
+        timer = undefined;
+        // restore UI state
+        btnPause.hidden = true;
+        btnResume.hidden = false;
     }
     return result.done;
 }
 
-function run(animate) {
+async function run(animate) {
     if (!solver) {
         clearPath(path);
         solver = doSolve(animate);
     }
-    if (!doStepOver()) {
-        timer = setTimeout(() => { run(animate) }, TEMPO);
+    if (!(await doStepOver())) {
+        timer = setTimeout(async () => { await run(animate) }, TEMPO);
     }
 }
 
-function solve() {
+async function solve() {
+    btnSolve.disabled = true;
+    btnReset.disabled = true;
+    pause();
     clearPath(path);
     solver = doSolve(false);
-    doStepOver();
+    await doStepOver();
+    btnSolve.disabled = false;
+    btnReset.disabled = false;
 }
 
 function resume() {
@@ -252,19 +262,39 @@ function drawLine(x1, y1, x2, y2) {
     ctx.stroke();
 }
 
-function drawCenterLine(path, clear = false) {
+async function drawCenterLine(path, clear = false) {
+    // draw the path from bottom to top
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = clear ? BACKGROUND : FOREGROUND;
     ctx.beginPath();
     for (let i = 0; i < path.length; i++) {
         const point = [OFFSET + (path[i][0] + 1 / 2) * CELL_SIZE, OFFSET + (path[i][1] + 1 / 2) * CELL_SIZE];
         if (i === 0) {
-            ctx.moveTo(...point);
+            // draw the bottom end
+            ctx.moveTo(point[0], point[1] + CELL_SIZE / 2);
+        }
+
+        if (clear) {
+            ctx.lineTo(...point)
+            ctx.stroke();
         } else {
-            ctx.lineTo(...point);
+            // animate the lightening travel from ground back to the sky
+            await new Promise(resolve => {
+                setTimeout(() => {
+                    ctx.lineTo(...point)
+                    ctx.stroke();
+                    resolve();
+                }, TEMPO / 1000);
+            });
+        }
+
+        // draw the top end
+        if (i === path.length - 1) {
+            ctx.lineTo(point[0], point[1] - CELL_SIZE / 2)
+            ctx.stroke();
         }
     }
-    ctx.lineWidth = 4;
-    ctx.strokeStyle = clear ? BACKGROUND : FOREGROUND;
-    ctx.stroke();
+
     ctx.lineWidth = 1;
 }
 
@@ -300,7 +330,7 @@ function drawNodeByStep(node, maxStep) {
     ctx.fillStyle = 'white';
 }
 
-function drawPathBackTrack(node) {
+async function drawPathBackTrack(node) {
     let winningNode = node
     
     if (winningNode) {
@@ -309,7 +339,9 @@ function drawPathBackTrack(node) {
             path.push([winningNode.x, winningNode.y]);
             winningNode = winningNode.parent;
         }
-        drawCenterLine(path)
+        await drawCenterLine(path)
+        clearPath(path);
+        await drawCenterLine(path)
     } else {
         warn();
     }
