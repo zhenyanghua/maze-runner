@@ -7,13 +7,21 @@
         #canvas {
             background: #020c21;
         }
+        button {
+            width: 100px;
+        }
     </style>
 </head>
 <body>
 <canvas id="canvas" width="500px" height="500px"></canvas>
-<button id="reset">New Maze</button>
-<button id="solve">Solve</button>
-<button id="animate">Animate</button>
+<div>
+    <button id="reset">New Maze</button>
+    <button id="solve">Solve</button>
+    <button id="resume">Resume</button>
+    <button id="pause" hidden>Pause</button>
+    <button id="step">Step Over</button>
+</div>
+
 <script src="main.js"></script>
 </body>
 </html>

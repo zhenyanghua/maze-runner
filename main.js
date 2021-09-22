@@ -10,11 +10,15 @@ const OFFSET = CELL_SIZE;
 const canvas = document.getElementById('canvas');
 const btnReset = document.getElementById('reset');
 const btnSolve = document.getElementById('solve');
-const btnAnimate = document.getElementById('animate');
+const btnResume = document.getElementById('resume');
+const btnPause = document.getElementById('pause');
+const btnStep = document.getElementById('step');
 const ctx = canvas.getContext('2d');
 
-let walls;
 let path = [];
+let solver;
+let timer;
+let walls = generateMaze();
 
 btnReset.addEventListener('click', () => {
     clear();
@@ -22,16 +26,29 @@ btnReset.addEventListener('click', () => {
 });
 
 btnSolve.addEventListener('click', () => {
-    run();
-})
+    solve();
+});
 
-btnAnimate.addEventListener('click', () => {
-    run(true)
-})
+btnResume.addEventListener('click', () => {
+    btnResume.hidden = true;
+    btnPause.hidden = false;
+    resume();
+});
+
+btnPause.addEventListener('click', () => {
+    btnPause.hidden = true;
+    btnResume.hidden = false;
+    pause();
+});
+
+btnStep.addEventListener('click', () => {
+    stepOver();
+});
 
 // Generate a maze
 function generateMaze() {
     path = [];
+    solver = undefined;
     const set = new Set();
     for (let y = 0; y <= GRID_HEIGHT; y++) {
         for (let x = 0; x <= GRID_WIDTH; x++) {
@@ -49,10 +66,10 @@ function generateMaze() {
     return set;
 }
 
-async function solve(animate) {
+function* doSolve(animate) {
     clearAllNodes();
     const visited = new Map();
-    let lastStep = 1;
+    let lastStep = 0;
     // solve the maze - BFS
     const queue = [];
     // 1. pretend there is a root node that is just one row above the first row,
@@ -67,9 +84,11 @@ async function solve(animate) {
                 parent: undefined,
                 parentEdge: buildKey(x, 0, x + 1, 0)
             };
-            queue.push(node);
+            // queue.push(node);
+            createNodeIfNotVisited(node);
         }
     }
+
     // 2. For each node in the queue,
     // to determine whether a node has any children, check the walls set to see if
     // three other sides have walls, for each side that doesn't have a wall, create
@@ -79,7 +98,11 @@ async function solve(animate) {
         if (animate) {
             // when it gets to the next depth, redraw all nodes based on classification
             if (lastStep < node.step) {
-                lastStep = await drawNodes(visited);
+                // lastStep = await drawNodes(visited);
+                lastStep = [...visited.values()]
+                    .map(node => node.step)
+                    .reduce((prev, curr) => curr > prev ? curr : prev, 0);
+                yield { lastStep, visited };
             }
         }
         const {x, y, step, parentEdge} = node;
@@ -158,18 +181,66 @@ async function solve(animate) {
 // when queue is empty, restart the program.
 }
 
-async function run(animate) {
-    clearPath(path);
-    let winningNode = await solve(animate);
-    if (winningNode) {
-        path = [];
-        while (winningNode) {
-            path.push([winningNode.x, winningNode.y]);
-            winningNode = winningNode.parent;
+/**
+ * The solver generator consumer that does the drawing for each yield 
+ * and relay the generator state.
+ * @returns if the generator is done.
+ */
+function doStepOver() {
+    const result = solver.next();
+    if (!result.done) {
+        if (result.value) {
+            const { visited, lastStep } = result.value;
+            visited.forEach(node => {
+                drawNodeByStep(node, lastStep);
+            })
         }
-        drawCenterLine(path)
     } else {
-        warn();
+        drawPathBackTrack(result.value);
+        // dispose
+        solver = undefined;
+    }
+    return result.done;
+}
+
+function run(animate) {
+    if (!solver) {
+        clearPath(path);
+        solver = doSolve(animate);
+    }
+    if (!doStepOver()) {
+        timer = setTimeout(() => { run(animate) }, TEMPO);
+    }
+}
+
+function solve() {
+    clearPath(path);
+    solver = doSolve(false);
+    doStepOver();
+}
+
+function resume() {
+    // disallow resume when it is not paused.
+    if (!timer) {
+        run(true);
+    }
+}
+
+function pause() {
+    if (timer) {
+        clearTimeout(timer);
+        timer = undefined;
+    }
+}
+
+function stepOver() {
+    if (!solver) {
+        clearPath(path);
+        solver = doSolve(true);
+    }
+    // disallow step over when is not paused.
+    if (!timer) {
+        doStepOver();
     }
 }
 
@@ -227,6 +298,21 @@ function drawNodeByStep(node, maxStep) {
     ctx.fillStyle = maxStep - node.step < MAX_LAST_STEPS ? `rgba(255, 255, 150, ${1 - (maxStep - node.step) / MAX_LAST_STEPS})` : BACKGROUND;
     ctx.fill();
     ctx.fillStyle = 'white';
+}
+
+function drawPathBackTrack(node) {
+    let winningNode = node
+    
+    if (winningNode) {
+        path = [];
+        while (winningNode) {
+            path.push([winningNode.x, winningNode.y]);
+            winningNode = winningNode.parent;
+        }
+        drawCenterLine(path)
+    } else {
+        warn();
+    }
 }
 
 function clearNodes(nodes) {
